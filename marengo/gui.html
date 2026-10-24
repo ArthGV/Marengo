@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Marengo</title>
+<style>
+  body { font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; margin: 24px; }
+  #board { display: grid; grid-template-columns: repeat(8, 64px); border: 2px solid #333; }
+  .sq { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 46px; cursor: pointer; position: relative; user-select: none; }
+  .light { background: #f0d9b5; } .dark { background: #b58863; }
+  .sel { outline: 4px solid #3b82f6; outline-offset: -4px; }
+  .last { box-shadow: inset 0 0 0 100px rgba(255, 235, 60, .45); }
+  .target::after { content: ""; width: 18px; height: 18px; border-radius: 50%; background: rgba(0, 0, 0, .3); position: absolute; }
+  #status { margin: 12px; min-height: 1.5em; font-weight: 600; } #status.err { color: #c00; }
+  button { margin: 0 4px; padding: 6px 12px; }
+</style>
+<div id="board"></div>
+<div id="status"></div>
+<div><button onclick="newGame('white')">New game as white</button><button onclick="newGame('black')">New game as black</button></div>
+<script>
+const GLYPH = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
+let S = null, sel = null;
+
+async function call(path, body) {
+  const r = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : {});
+  S = await r.json(); sel = null; render();
+}
+const newGame = color => call("/new", { color });
+
+function render() {
+  const rows = S.fen.split(" ")[0].split("/").map(r => [...r].flatMap(c => /\d/.test(c) ? Array(+c).fill("") : c));
+  const white = S.human === "white", el = document.getElementById("board");
+  el.innerHTML = "";
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    const rank = white ? 7 - i : i, file = white ? j : 7 - j;
+    const name = "abcdefgh"[file] + (rank + 1), piece = rows[7 - rank][file];
+    const d = document.createElement("div");
+    d.className = "sq " + ((rank + file) % 2 ? "light" : "dark");
+    if (S.last && (S.last.slice(0, 2) === name || S.last.slice(2, 4) === name)) d.classList.add("last");
+    if (sel === name) d.classList.add("sel");
+    if (sel && (S.legal[sel] || []).includes(name)) d.classList.add("target");
+    d.textContent = GLYPH[piece] || "";
+    d.onclick = () => click(name);
+    el.appendChild(d);
+  }
+  const st = document.getElementById("status");
+  st.className = S.error ? "err" : "";
+  st.textContent = S.error || (S.result ? `Game over: ${S.result} (${S.termination})` : "");
+}
+
+function click(name) {
+  if (sel && (S.legal[sel] || []).includes(name)) return call("/move", { uci: sel + name });
+  sel = S.legal[name] ? name : null; render();
+}
+call("/state");
+</script>
